@@ -1,0 +1,102 @@
+1.安装运行环境
+[root@redmine mail]# gem list
+*** LOCAL GEMS ***
+actionmailer (2.3.11)
+actionpack (2.3.11)
+activerecord (2.3.11)
+activeresource (2.3.11)
+activesupport (2.3.11)
+cgi_multipart_eof_fix (2.5.0)
+daemon_controller (0.2.6)
+daemons (1.1.3)
+fastthread (1.0.7)
+fcgi (0.8.8)
+gem_plugin (0.2.3)
+i18n (0.4.2)
+mongrel (1.1.5)
+mysql (2.8.1)
+passenger (3.0.7)
+rack (1.1.1)
+rails (2.3.11)
+rake (0.8.7)
+rdoc (3.6.1)
+rubygems-update (1.3.7)
+#gem install rails -v=2.3.11
+
+2.配置mysql数据库
+mysql>create database redmine character set utf8;
+mysql>create user 'redmine'@'localhost' identified by 'my_password';
+mysql>grant all privileges on redmine.* to 'redmine'@'localhost';
+
+3.#cd /home/redmine/config/
+#cp database.yml.example database.yml
+#vim database.yml
+# MySQL (default setup).
+production:  
+adapter: mysql  
+database: redmine  
+host: localhost  
+username: redmine  
+password: xxxx
+encoding: utf8
+
+4.
+#rake generate_session_store
+#RAILS_ENV=production rake db:migrate
+#RAILS_ENV=production rake redmine:load_default_data
+#mkdir tmp public/plugin_assets
+#sudo chown -R redmine:redmine files log tmp public/plugin_assets
+#sudo chmod -R 755 files log tmp public/plugin_assets
+#ruby script/server webrick -e production   
+//Once WEBrick has started, point your browser to http://localhost:3000/. You should now see the application welcome page.
+
+5.redmine与apache整合
+#gem i passenger    
+#passenger-install-apache2-module   
+#cd /usr/local/apache/conf
+#vim httpd.conf
+
+LoadModule passenger_module /usr/local/lib/ruby/gems/1.8/gems/passenger-3.0.7/ext/apache2/mod_passenger.so
+PassengerRoot /usr/local/lib/ruby/gems/1.8/gems/passenger-3.0.7
+PassengerRuby /usr/local/bin/ruby
+<Directory "/home/redmine/public/"> 
+    Options -MultiViews
+    AllowOverride All
+    Order allow,deny
+    Allow from all
+</Directory>
+
+#cd /home/redmine/public/
+#cp dispatch.cgi.example dispatch.cgi
+#vim dispatch.cgi        //修改ruby的路径
+
+6.对通知邮件容量进去限制
+#vim /usr/bin/commit-email.pl
+    elsif (defined $smtp_server and @email_addresses)
+      {
+        my $smtp = Net::SMTP->new($smtp_server)
+          or die "$0: error opening SMTP session to `$smtp_server': $!\n";
+        handle_smtp_error($smtp, $smtp->mail($mail_from));
+        handle_smtp_error($smtp, $smtp->recipient(@email_addresses));
+        handle_smtp_error($smtp, $smtp->data());
+        handle_smtp_error($smtp, $smtp->datasend(@head,@body));
+        if ($diff_wanted)
+          {
+#       handle_smtp_error($smtp, $smtp->datasend($difflines[0]));
+
+                        my $diffmsg = "";
+                        my $max_size = 10 * 1024;
+                        use bytes;
+                        my $difflines_number = scalar(@difflines);
+                        for(my $i=0; $i<$difflines_number; $i++){
+                              my $msg_length = length($diffmsg);
+                                last if($msg_length >= $max_size);
+                                $diffmsg = $diffmsg . $difflines[$i];
+                        }
+            handle_smtp_error($smtp, $smtp->datasend($diffmsg));
+          }
+        handle_smtp_error($smtp, $smtp->dataend());
+        handle_smtp_error($smtp, $smtp->quit());
+      }
+
+    # Dump the output to logfile (if its name is not empty).

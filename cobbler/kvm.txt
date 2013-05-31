@@ -1,0 +1,195 @@
+检查kvm模块
+# lsmod |grep kvm
+kvm_intel              52570  3 
+kvm                   314739  1 kvm_intel
+
+检查物理主机虚拟化完成情况
+[root@kvm ~]# virsh list
+ Id    名称                         状态
+----------------------------------------------------
+ 1     seri                           running
+ virsh常用命令一览表
+命令	说明
+help	显示该命令的说明
+quit	结束 virsh，回到 Shell
+connect	连接到指定的虚拟机服务器
+create	启动一个新的虚拟机
+destroy	删除一个虚拟机
+start	开启（已定义的）非启动的虚拟机
+define	从 XML 定义一个虚拟机
+undefine	取消定义的虚拟机
+dumpxml	转储虚拟机的设置值
+list	列出虚拟机
+reboot	重新启动虚拟机
+save	存储虚拟机的状态
+restore	回复虚拟机的状态
+suspend	暂停虚拟机的执行
+resume	继续执行该虚拟机
+dump	将虚拟机的内核转储到指定的文件，以便进行分析与排错
+shutdown	关闭虚拟机
+setmem	修改内存的大小
+setmaxmem	设置内存的最大值
+setvcpus	修改虚拟处理器的数量
+
+
+KVM虚拟机的信息保存在 /var/lib/libvirt目录下
+
+1.KVM虚拟机网络配置的两种方式：NAT方式和Bridge方式
+1)rhel 6.3 KVM 网卡桥接的配置 
+#cd /etc/sysconfig/network-scripts/
+# cp ifcfg-eth0 ifcfg-br0
+#vim ifcfg-eth0
+DEVICE="eth0"
+BOOTPROTO="static"
+HWADDR="00:1A:A0:D0:6C:DC"
+NM_CONTROLLED="yes"
+ONBOOT="yes"
+#IPADDR="192.168.8.81"
+#NETMASK="255.255.255.0"
+#GATEWAY="192.168.8.1"
+TYPE="Ethernet"
+BRIDGE="br0"
+#UUID="cff8c96a-96b5-49b7-bca0-20861b22d887"
+
+#vim ifcfg-br0
+DEVICE="br0"
+BOOTPROTO="static"
+HWADDR="00:1A:A0:D0:6C:DC"
+NM_CONTROLLED="yes"
+ONBOOT="yes"
+IPADDR="192.168.8.81"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.8.1"
+TYPE="Bridge"
+#UUID="cff8c96a-96b5-49b7-bca0-20861b22d887"
+#service network restart
+#sed -i 's/net.ipv4.ip_forward = 0/net.ipv4.ip_forward = 1/' /etc/sysctl.conf
+#sysctl -p
+配置虚拟主机IP跟物理主机一个网段
+虚拟机启动后，验证网络接口是否正常：
+# brctl show
+bridge name     bridge id               STP enabled     interfaces
+br0             8000.001aa0d06cdc       no              eth0
+                                                        vnet0
+virbr0          8000.52540071b57d       yes             virbr0-nic
+2)NAT方式是kvm安装后的默认方式。它支持主机与虚拟机的互访，同时也支持虚拟机访问互联网，但不支持外界访问虚拟机。
+
+2.创建IMG
+#qemu-img create -f qcow2 ipa.img 40G
+#cd /var/lib/libvirt/images/
+#chown qemu:qemu ipa.img 
+
+
+
+3.kvm 虚拟客户机 重命名
+#virsh destroy p2v  //将客户机停机
+#virsh dumpxml p2v >nginx.xml   //导出配置文件
+#vim nginx.xml
+<name>nginx</name>
+#virsh undefine p2v             //取消定p2v
+#virsh define nginx.xml        //定义nginx 
+Domain nginx defined from nginx.xml
+[root@kvm qemu]# virsh start nginx     //启动nginx客户机
+Domain nginx started
+# virsh list
+ Id    Name                           State
+----------------------------------------------------
+ 9     cobbler                        running
+ 34    puppet                         running
+ 72    nginx                          running
+
+ 
+ 4.快照和还原,kvm环境下qcow2的镜像支持快照 ,raw不支持
+ 1).使用qemu-img命令使用快照
+列出某个镜像的所有快照
+# qemu-img snapshot -l p2v.img 
+Snapshot list:
+ID        TAG                 VM SIZE                DATE       VM CLOCK
+2         1363771274             274M 2013-03-20 17:21:14   00:09:53.383
+3         20130321bak            273M 2013-03-21 15:16:59   22:03:57.342
+# qemu-img info p2v.img 
+image: p2v.img
+file format: qcow2
+virtual size: 30G (32212254720 bytes)
+disk size: 2.8G
+cluster_size: 65536
+Snapshot list:
+ID        TAG                 VM SIZE                DATE       VM CLOCK
+2         1363771274             274M 2013-03-20 17:21:14   00:09:53.383
+# qemu-img snapshot -c test p2v.img
+# qemu-img snapshot -l p2v.img        
+Snapshot list:
+ID        TAG                 VM SIZE                DATE       VM CLOCK
+3         20130321bak            273M 2013-03-21 15:16:59   22:03:57.342
+4         test                      0 2013-03-21 15:37:25   00:00:00.000
+
+
+2).利用libvirt使用快照     创建快照产生新的镜像，虚拟机镜像大小增加，快照应属于镜像
+# virsh snapshot-create nginx                   //创建快照
+Domain snapshot 1363771274 created
+
+# virsh snapshot-create-as nginx 20130321bak
+
+# virsh snapshot-list nginx
+ Name                 Creation Time             State
+------------------------------------------------------------
+ 1363770413           2013-03-20 17:06:53 +0800 running
+ 1363771274           2013-03-20 17:21:14 +0800 running
+
+#virsh snapshot-revert nginx 1363770413     //使用快照，指定使用哪一个快照恢复虚拟机
+
+#virsh snapshot-current nginx    //查看最新的快照信息
+
+#virsh snapshot-delete nginx 1363770413 删除指定快照
+
+#virsh snapshot-dumpxml nginx 1363771274          //通过snapshot-dumpxml命令查询该虚拟机某个快照的详细配置
+<domainsnapshot>
+  <name>1363771274</name>
+  <state>running</state>                    //虚拟机状态  虚拟机关机状态时创建的快照状态为shutoff（虚拟机运行时创建的快照，即使虚拟机状态为shutoff，快照状态依然为running）
+  <creationTime>1363771274</creationTime>         //虚拟机的创建时间 Readonly 由此可以看出没有给快照指定名称的话，默认以时间值来命名快照
+  <domain type='kvm'>
+    <name>nginx</name>
+    <uuid>cced17b6-3cd0-d84c-69cf-d022b4011b37</uuid>            //此快照所属的虚拟机(uuid)
+    <memory unit='KiB'>524288</memory>
+    <currentMemory unit='KiB'>524288</currentMemory>
+    <vcpu placement='static'>1</vcpu>
+
+</domainsnapshot>
+
+
+5.转换镜像格式 
+将raw格式的镜像转化为qcow2格式
+# qemu-img info zabbix.img 
+image: zabbix.img
+file format: raw
+virtual size: 20G (21474836480 bytes)
+disk size: 20G
+# qemu-img convert -f raw -O qcow2 zabbix.img zabbix1.img 
+# qemu-img info zabbix1.img 
+image: zabbix1.img
+file format: qcow2
+virtual size: 20G (21474836480 bytes)
+disk size: 1.8G
+cluster_size: 65536
+# chown qemu:qemu zabbix1.img 
+# chmod 600 zabbix1.img
+# rm -f zabbix.img
+# mv zabbix1.img zabbix.img 
+# virsh destroy zabbix
+# virsh edit seri              //修改磁盘格式 
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none'/>                    // raw ---> qcow2
+      <source file='/var/lib/libvirt/images/zabbix.img'/>
+      <target dev='hda' bus='ide'/>
+      <address type='drive' controller='0' bus='0' target='0' unit='0'/>
+    </disk>
+# virsh start zabbix
+
+第一次转换启动后发现一个问题，网卡不能用了。重启网络服务，报以下错误:
+Bringing up interface eth0: Device eth0 does not seem to be present, delaying initialization.   [FAILED]
+解决方法：1): rm -fr /etc/udev/rules.d/70-persistent-net.rules 重启系统。会自动生成一个新的。
+2):添加新网卡，删除旧网卡 虚拟机网卡改为eth1,network restart，OK
+
+6.增加减少镜像大小
+注意：只有raw格式的镜像才可以改变大小
+# qemu-img resize puppet.img +5G

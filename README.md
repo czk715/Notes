@@ -1,4 +1,4 @@
-linux_config
+conf-box
 ============
 
-linux configuration!
+my linux configure and shell script!

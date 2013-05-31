@@ -1,0 +1,1 @@
+用cobbler自动化部署kvm

@@ -1,0 +1,176 @@
+1.准备工作：
+先将iptables selinux 关掉。
+chkconfig ip6tables off
+chkconfig iptables off
+/etc/init.d/ip6tables stop
+/etc/init.d/iptables stop
+setenforce 0
+并修改配置文件/etc/sysconfig/selinux   将其disable
+SELINUX=disabled
+#sed -i '/SELINUX/s/enforcing/disabled/' /etc/selinux/config
+]# sestatus 
+SELinux status:                 disabled
+设置hostname
+# vim /etc/hosts
+192.168.8.105   cobbler.imjx.com.cn     cobbler
+
+2.导入yum源,安装软件
+#wget http://rpms.famillecollet.com/enterprise/6/remi/i386/remi-release-6-1.el6.remi.noarch.rpm
+#wget http://mirror.ancl.hawaii.edu/linux/epel/6/i386/epel-release-6-7.noarch.rpm
+#rpm -ivh remi-release-6-1.el6.remi.noarch.rpm
+#rpm -ivh epel-release-6-7.noarch.rpm
+#yum install cobbler httpd rsync tftp-server xinetd dhcp pykickstart cman fence-agents debmirror mkisofs python-ctypes mod_python createrepo python-cheetah python-simplejson yum-utils libyaml python-netaddr PyYAML -y
+
+3.配置
+1): 修改cobbler 的配置文件
+#vim /etc/cobbler/settings
+next_server: 192.168.8.105
+server: 192.168.8.105
+manage_dhcp: 1
+2): 启用tfpt 和 rsync
+#vim /etc/xinetd.d/tftp
+#vim /etc/xinetd.d/rsync
+将disable的值修改成no
+启动服务
+#/etc/init.d/xinetd restart
+
+3) :修改dhcp的配置文件
+# cat /etc/cobbler/dhcp.template
+subnet 192.168.8.0 netmask 255.255.255.0 {
+     option routers             192.168.8.105;
+     option domain-name-servers 192.168.8.1;
+     option subnet-mask         255.255.255.0;
+     range dynamic-bootp        192.168.8.160 192.168.8.170;
+     filename                   "/pxelinux.0";
+     default-lease-time         21600;
+     max-lease-time             43200;
+     next-server                $next_server;
+}
+4): 生成密码串
+# openssl passwd -1 -salt 'imjx.com.cn' 'xmindex'
+$1$imjx.com$FUGsD4YLhZP2IcHXb3Va8.
+openssl passwd -1 -salt '任间字符' '密码'
+这个命令的用法，任意字符可以随便写，这个密码就是安装完系统root的密码了。替换配置文件里的字串。
+vim /etc/cobbler/settings
+default_password_crypted: "$1$imjx.com$FUGsD4YLhZP2IcHXb3Va8."
+
+5) : 系统下载loader程序
+# cobbler get-loaders
+task started: 2013-01-22_143017_get_loaders
+task started (id=Download Bootloader Content, time=Tue Jan 22 14:30:17 2013)
+downloading http://dgoodwin.fedorapeople.org/loaders/README to /var/lib/cobbler/loaders/README
+downloading http://dgoodwin.fedorapeople.org/loaders/COPYING.elilo to /var/lib/cobbler/loaders/COPYING.elilo
+downloading http://dgoodwin.fedorapeople.org/loaders/COPYING.yaboot to /var/lib/cobbler/loaders/COPYING.yaboot
+downloading http://dgoodwin.fedorapeople.org/loaders/COPYING.syslinux to /var/lib/cobbler/loaders/COPYING.syslinux
+downloading http://dgoodwin.fedorapeople.org/loaders/elilo-3.8-ia64.efi to /var/lib/cobbler/loaders/elilo-ia64.efi
+downloading http://dgoodwin.fedorapeople.org/loaders/yaboot-1.3.14-12 to /var/lib/cobbler/loaders/yaboot
+downloading http://dgoodwin.fedorapeople.org/loaders/pxelinux.0-3.61 to /var/lib/cobbler/loaders/pxelinux.0
+downloading http://dgoodwin.fedorapeople.org/loaders/menu.c32-3.61 to /var/lib/cobbler/loaders/menu.c32
+downloading http://dgoodwin.fedorapeople.org/loaders/grub-0.97-x86.efi to /var/lib/cobbler/loaders/grub-x86.efi
+downloading http://dgoodwin.fedorapeople.org/loaders/grub-0.97-x86_64.efi to /var/lib/cobbler/loaders/grub-x86_64.efi
+# cobbler sync
+注意：每次修改配置文件后用cobbler sync同步数据(过程中会重启dhcp服务),并重启cobbler.
+
+6): 导入镜像源
+# mkdir /mnt/cdrom/
+# mount -o loop /root/CentOS-6.3-i386-bin-DVD1.iso /mnt/cdrom/
+## cobbler import --path=/mnt/cdrom/ --name=centos6.3 --arch=i386
+task started: 2013-01-22_145837_import
+task started (id=Media import, time=Tue Jan 22 14:58:37 2013)
+Found a redhat compatible signature: Packages
+adding distros
+creating new distro: centos6.3-i386
+creating new profile: centos6.3-i386
+associating repos
+traversing distro centos6.3-i386
+descent into /var/www/cobbler/ks_mirror/centos6.3-i386
+processing repo at : /var/www/cobbler/ks_mirror/centos6.3-i386
+need to process repo/comps: /var/www/cobbler/ks_mirror/centos6.3-i386
+looking for /var/www/cobbler/ks_mirror/centos6.3-i386/repodata/*comps*.xml
+running: createrepo -c cache -s sha --groupfile /var/www/cobbler/ks_mirror/centos6.3-i386/repodata/151ad5b0a3056212a6012b429192adcabba8b37571ff12453d6a29bc5199c943-c6-i386-comps.xml /var/www/cobbler/ks_mirror/centos6.3-i386
+1362/3024 - Packages/hunspell-sc-0.20081101-4.1.el6.noarch.rpm                  
+iso-8859-1 encoding on Ville Skyttille.skytta@iki.fi> - 2.8.2-2
+
+3024/3024 - Packages/ModemManager-0.4.0-3.git20100628.el6.i686.rpm              
+Saving Primary metadata
+Saving file lists metadata
+Saving other metadata
+
+received on stderr: 
+associating kickstarts
+*** TASK COMPLETE ***
+启动相关服务
+chkconfig httpd on 
+chkconfig cobblerd on
+chkconfig named on
+chkconfig dhcpd on
+/etc/init.d/httpd restart
+/etc/init.d/cobblerd restart
+/etc/init.d/named restart
+
+7): 检测cobbler的环境，根据提示进行修改。
+# cobbler check
+The following are potential configuration items that you may want to fix:
+
+1 : service dhcpd is not running
+2 : some network boot-loaders are missing from /var/lib/cobbler/loaders, you may run 'cobbler get-loaders' to download them, or, if you only want to handle x86/x86_64 netbooting, you may ensure that you have installed a *recent* version of the syslinux package installed and can ignore this message entirely.  Files in this directory, should you want to support all architectures, should include pxelinux.0, menu.c32, elilo.efi, and yaboot. The 'cobbler get-loaders' command is the easiest way to resolve these requirements.
+3 : debmirror package is not installed, it will be required to manage debian deployments and repositories
+4 : ksvalidator was not found, install pykickstart
+5 : fencing tools were not found, and are required to use the (optional) power management features. install cman or fence-agents to use them
+
+8): 配置成功：
+# cobbler check 
+No configuration problems found. All systems go. 
+# cobbler report            //进行信息查看
+
+9): 设置cobbler_web
+#sed -i 's/authn_denyall/authn_configfile/g' /etc/cobbler/modules.conf              //打开模块
+#htdigest /etc/cobbler/users.digest "Cobbler" cobbler            //设置登录的帐户信息
+
+4: 排错
+1）:# cobbler check
+httpd does not appear to be running and proxying cobbler, or SELinux is in the way. Original traceback:
+Traceback (most recent call last):
+  File "/usr/lib/python2.6/site-packages/cobbler/cli.py", line 184, in check_setup
+    s.ping()
+  File "/usr/lib/python2.6/xmlrpclib.py", line 1199, in __call__
+    return self.__send(self.__name, args)
+  File "/usr/lib/python2.6/xmlrpclib.py", line 1489, in __request
+    verbose=self.__verbose
+  File "/usr/lib/python2.6/xmlrpclib.py", line 1235, in request
+    self.send_content(h, request_body)
+  File "/usr/lib/python2.6/xmlrpclib.py", line 1349, in send_content
+    connection.endheaders()
+  File "/usr/lib/python2.6/httplib.py", line 908, in endheaders
+    self._send_output()
+  File "/usr/lib/python2.6/httplib.py", line 780, in _send_output
+    self.send(msg)
+  File "/usr/lib/python2.6/httplib.py", line 739, in send
+    self.connect()
+  File "/usr/lib/python2.6/httplib.py", line 720, in connect
+    self.timeout)
+  File "/usr/lib/python2.6/socket.py", line 567, in create_connection
+    raise error, msg
+error: [Errno 111] Connection refused
+原因：没有启动httpd造成的
+解决方法：
+# chkconfig --level 345 httpd on
+# service  httpd start
+Starting httpd: [  OK  ]
+
+2）:# cobbler check
+The following are potential configuration items that you may want to fix:
+
+1 : comment 'dists' on /etc/debmirror.conf for proper debian support
+2 : comment 'arches' on /etc/debmirror.conf for proper debian support
+
+Restart cobblerd and then run 'cobbler sync' to apply changes.
+解决方法：
+# vim /etc/debmirror.conf          //注释下面三行
+#@dists="sid";
+#@sections="main,main/debian-installer,contrib,non-free";
+#@arches="i386";
+
+3):
+ kvm虚拟机pxe启动不能获取dhcp地址
+ 解决方法： send key -----"Ctrl + Alt + Delete"

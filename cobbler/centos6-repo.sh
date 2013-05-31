@@ -1,5 +1,5 @@
 #!/bin/bash
-#author chen.zk   http://www.imjx.com.cn
+#author chen.zk   
 rpm -ivh /root/wget-1.12-1.4.el6.i686.rpm
 ### Repo Setup ###
 cd /etc/yum.repos.d/

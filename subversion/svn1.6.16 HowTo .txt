@@ -1,0 +1,113 @@
+1.install apr、apr-util、neon、swig、zlib
+#cd /usr/local/src/
+#wget http://subversion.tigris.org/downloads/subversion-deps-1.6.16.tar.gz  //subversion-deps包是解决subversion所依赖的库文件，安装所必需的
+#tar zxvf subversion-deps-1.6.16.tar.gz
+#cd subversion-1.6.16/apr
+#./configure --prefix=/usr/local/apr && make && make install
+#cd ../apr-util/
+#./configure --prefix=/usr/local/apr-util --with-apr=/usr/local/apr/
+#make && make install
+#cd ../neon
+#./configure --prefix=/usr/local/neon && make && make install
+#yum install -y swig
+ 
+2.install apache
+#tar zxvf httpd-2.2.9.tar.gz
+#cd httpd-2.2.9
+#./configure --prefix=/usr/local/apache --enable-dav --enable-so --enable-ssl --enable-maintainer-mode --with-apr=/usr/local/apr --with-apr-util=/usr/local/apr-util/
+#make && make install
+ 
+3.install subversion
+#wget http://subversion.tigris.org/downloads/subversion-1.6.16.tar.gz
+#tar zxvf subversion-1.6.16.tar.gz
+#cd subversion-1.6.16
+#./configure --prefix=/usr/local/svn --with-apr=/usr/local/apr/bin/apr-1-config --with-apr-util=/usr/local/apr-util/bin/apu-1-config --with-apxs=/usr/local/apache/bin/apxs --with-ssl --with-zlib=/usr/ --enable-maintainer-mode --with-swig=/usr/bin/swig --with-neon=/usr/local/neon/bin/neon-config --enable-shared --enable-static --without-berkeley-db
+#make && make install
+编译以后，apache增加了两个模块:
+LoadModule dav_svn_module     modules/mod_dav_svn.so
+LoadModule authz_svn_module   modules/mod_authz_svn.so
+ 
+4.
+#groupadd xmsvn
+#useradd xmsvn -g xmsvn
+#vim /usr/local/apache/conf/httpd.conf
+#
+<Location /svn/>
+   DAV svn
+   SVNListParentPath On        //浏览器显示版本库根目录列表
+   SVNParentPath /home/xmsvn/
+   AuthzSVNAccessFile /home/xmsvn/svnaccess           //权限控制文件
+   AuthType Basic
+   AuthName "XM-Subversion Repository"
+   AuthUserFile /home/xmsvn/svnpasswd             //密码文件   
+   Require valid-user
+</Location>
+User xmsvn
+Group xmsvn
+#cd /home/xmsvn
+#htpasswd -c /home/xmsvn/svnpasswd svn_test
+#touch svnaccess
+#vim svnaccess
+[/]
+*=r
+[nero:/]
+*=r
+svn_test=rw
+#/usr/local/svn/bin/svnadmin create nero
+#chown -R xmsvn:xmsvn nero/
+ 
+5.邮件通知
+#cp /usr/local/src/subversion-1.6.16/contrib/hook-scripts/commit-email.pl /usr/bin/
+#cd /home/xmsvn/nero/hooks/
+#cp post-commit.tmpl post-commit
+#chown xmsvn:xmsvn post-commit
+#chmod +x post-commit
+#vim post-commit
+export LC_CTYPE=en_US.UTF-8              //设置LANG使发送的邮件支持中文
+REPOS="$1"
+REV="$2"
+MAX_SIZE=50                //限制邮件大小
+/usr/bin/commit-email.pl "$REPOS" "$REV" --from root@localhost.localdomain -s "[nero]" xx@xxx.com.cn xx@qq.com
+ 
+对通知邮件容量进去限制
+#vim /usr/bin/commit-email.pl
+    elsif (defined $smtp_server and @email_addresses)
+      {
+        my $smtp = Net::SMTP->new($smtp_server)
+          or die "$0: error opening SMTP session to `$smtp_server': $!\n";
+        handle_smtp_error($smtp, $smtp->mail($mail_from));
+        handle_smtp_error($smtp, $smtp->recipient(@email_addresses));
+        handle_smtp_error($smtp, $smtp->data());
+        handle_smtp_error($smtp, $smtp->datasend(@head,@body));
+        if ($diff_wanted)
+          {
+#       handle_smtp_error($smtp, $smtp->datasend($difflines[0]));
+
+                        my $diffmsg = "";
+                        my $max_size = 10 * 1024;
+                        use bytes;
+                        my $difflines_number = scalar(@difflines);
+                        for(my $i=0; $i<$difflines_number; $i++){
+                              my $msg_length = length($diffmsg);
+                                last if($msg_length >= $max_size);
+                                $diffmsg = $diffmsg . $difflines[$i];
+                        }
+            handle_smtp_error($smtp, $smtp->datasend($diffmsg));
+          }
+        handle_smtp_error($smtp, $smtp->dataend());
+        handle_smtp_error($smtp, $smtp->quit());
+      }
+
+    # Dump the output to logfile (if its name is not empty).
+
+6.svn版本库迁移
+导出repository 
+#svnadmin dump /home/xmsvn/nero/ >nero
+在新服务器上创建行repository 
+#svnadmin create /home/xmsvn/test
+导入repository 
+#svnadmin load /home/xmsvn/test/ <nero
+ 
+参考文档: http://www.dnbcw.com/biancheng/linux/qfbv264181.html
+          http://ihipop.info/tag/svn
+ 
